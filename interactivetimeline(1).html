@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interactive Timeline</title>
+<style>
+  :root { color-scheme: light; --muted:#687386; --panel:#f3f5f8; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; font:16px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; color:#20242c; background:white; }
+  .timeline-card { max-width:1100px; margin:auto; border:1px solid #d8dde5; border-radius:16px; padding:20px; background:white; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:1.35rem; margin:0; }
+  .count { border-radius:999px; background:#e8efff; color:#243d7a; padding:5px 10px; font-size:.85rem; }
+  .hint,.small { color:var(--muted); font-size:.9rem; }
+  .range { display:flex; justify-content:space-between; color:var(--muted); font-weight:650; margin:10px 0 0; }
+  .graph-wrap { width:100%; overflow-x:auto; }
+  svg { width:100%; min-width:640px; height:auto; display:block; }
+  .event-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); gap:8px 28px; margin-top:14px; }
+  label.event { display:flex; align-items:flex-start; gap:10px; cursor:pointer; }
+  label.event input { margin-top:5px; width:18px; height:18px; accent-color:#4263eb; flex-shrink:0; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin:7px 2px 0 0; flex-shrink:0; }
+  .event-name { flex:1; }
+  .event-date { color:var(--muted); font-weight:400; }
+  .controls { display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; }
+  button { border:1px solid #c8ced8; background:white; color:#20242c; padding:9px 13px; border-radius:9px; font:inherit; cursor:pointer; }
+  button:hover { background:#f3f5f8; }
+  button:focus-visible,input:focus-visible { outline:3px solid #4263eb; outline-offset:3px; }
+  .empty { text-align:center; padding:35px 12px; border-radius:10px; background:var(--panel); }
+  @media(max-width:520px) { body{padding:8px}.timeline-card{padding:13px}h1{font-size:1.15rem} }
+</style>
+</head>
+<body>
+<main class="timeline-card">
+  <header><h1>Interactive timeline</h1><span class="count" id="count">25 of 25 events</span></header>
+  <p class="hint">Select or deselect events to change the timeline's visible date range.</p>
+  <div id="timeline">
+    <div class="range"><span id="start-year"></span><span id="end-year"></span></div>
+    <div class="graph-wrap"><svg id="graph" viewBox="0 0 1000 330" role="img" aria-label="Timeline of selected events"></svg></div>
+    <p class="small">Timeline positions use the event's year (or the start year for a period). Full dates and details are listed below.</p>
+  </div>
+  <div class="event-list" id="events"></div>
+  <div class="controls"><button type="button" id="clear">Clear all</button><button type="button" id="reset">Show all / reset</button></div>
+</main>
+<script>
+const events = [
+ {year:1770, date:"29 April 1770", name:"Australia claimed for Britain", short:"Britain claims Australia", color:"#0d9488"},
+ {year:1788, date:"26 January 1788", name:"First Fleet arrived in Australia", short:"First Fleet arrives", color:"#64748b"},
+ {year:1793, date:"16 January 1793", name:"First civilian ship arrived in Australia", short:"Civilian ship arrives", color:"#7c3aed"},
+ {year:1843, date:"1843", name:"Men allowed to vote", short:"Men vote", color:"#d97706"},
+ {year:1895, date:"28 December 1895", name:"First commercial public screening of a film", short:"Early motion pictures", color:"#2563eb"},
+ {year:1992, date:"21 September 1992", name:"ABBA Gold: Greatest Hits album", short:"ABBA Greatest Hits", color:"#2563eb"},
+ {year:1897, date:"26 May 1897", name:"Dracula by Bram Stoker published", short:"Dracula published", color:"#be123c"},
+ {year:1901, date:"1 January 1901", name:"Australian Federation formed", short:"Australian Federation", color:"#0f766e"},
+ {year:1902, date:"12 June 1902", name:"Women allowed to vote federally in Australia", short:"Women vote federally", color:"#64748b"},
+ {year:1908, date:"1908", name:"First commercially produced colour film", short:"Colour film", color:"#d97706"},
+ {year:1914, endYear:1918, date:"28 July 1914 – 11 November 1918", name:"World War I", short:"World War I", labelSide:"left", color:"#b91c1c"},
+ {year:1931, date:"August 1931", name:"First public demonstration of a CRT television", short:"TV", color:"#7c3aed"},
+ {year:1954, date:"1 January 1954", name:"First colour television broadcast", short:"Colour TV", color:"#d97706"},
+ {year:1974, date:"6 April 1974", name:"ABBA won Eurovision", short:"ABBA", color:"#7c3aed"},
+ {year:1975, date:"1 March 1975", name:"First colour television broadcast in Australia", short:"Colour TV (AUS)", color:"#0d9488"},
+ {year:1966, date:"18 November 1966", name:"Marriage bar abolished (women no longer required to resign from the public service on marrying)", short:"Marriage bar abolished", color:"#be123c"},
+ {year:1975, date:"1975", name:"No-fault divorce introduced", short:"No-fault divorce", color:"#4263eb"},
+ {year:2004, date:"January 2004", name:"Morning-after pill first available over the counter", short:"Morning-after pill (OTC)", color:"#0f766e"},
+ {year:1929, endYear:1939, date:"1929–1939", name:"Great Depression", short:"Great Depression", labelSide:"left", color:"#a16207"},
+ {year:1939, endYear:1945, date:"1 September 1939 – 2 September 1945", name:"World War II", short:"World War II", color:"#475569"},
+ {year:1947, endYear:1991, date:"1947–1991", name:"Cold War", short:"Cold War", color:"#1d4ed8"},
+ {year:1955, endYear:1975, date:"1 November 1955 – 30 April 1975", name:"Vietnam War", short:"Vietnam War", color:"#15803d"},
+ {year:1969, date:"20 July 1969", name:"Moon landing", short:"Moon landing", color:"#6d28d9"},
+ {year:1990, date:"24 April 1990", name:"Hubble Space Telescope launched", short:"Hubble launched", color:"#0369a1"},
+ {year:1984, date:"1 August 1984", name:"Australia's Sex Discrimination Act made sexual harassment unlawful", short:"Sexual harassment law", color:"#d97706"},
+].sort((a,b)=>a.year-b.year);
+
+const eventsEl=document.getElementById("events");
+events.forEach(e=>{
+ const label=document.createElement("label"); label.className="event";
+ label.innerHTML=`<input type="checkbox" checked aria-label="Show ${e.year} ${e.name}"><span class="dot" style="background:${e.color}"></span><span class="event-name"><strong>${e.date} — ${e.name}</strong></span>`;
+ label.querySelector("input").addEventListener("change",ev=>{e.selected=ev.target.checked;render();});
+ e.selected=true; eventsEl.appendChild(label);
+});
+function render(){
+ const active=events.filter(e=>e.selected);
+ document.getElementById("count").textContent=`${active.length} of ${events.length} events`;
+ const timeline=document.getElementById("timeline");
+ if(!active.length){timeline.innerHTML='<div class="empty"><strong>No events selected</strong><br><span class="small">Turn on at least one event to display the timeline.</span></div>';return;}
+ if(!document.getElementById("graph")) timeline.innerHTML='<div class="range"><span id="start-year"></span><span id="end-year"></span></div><div class="graph-wrap"><svg id="graph" viewBox="0 0 1000 330" role="img" aria-label="Timeline of selected events"></svg></div><p class="small">Timeline positions use the event year (or the start year for a period). Full dates and details are listed below.</p>';
+ const svg=document.getElementById("graph");
+ const min=Math.min(...active.map(e=>e.year));
+ const max=Math.max(...active.map(e=>e.endYear||e.year));
+ document.getElementById("start-year").textContent=min;
+ document.getElementById("end-year").textContent=max;
+ const X0=70, X1=930, W=1000, CH=6.3, GAP=6, RH=58, STEM=46;
+ const x=year=>max===min?500:X0+(X1-X0)*(year-min)/(max-min);
+ const points=active.filter(e=>!e.endYear), periods=active.filter(e=>e.endYear);
+
+ /* Split a label into at most two balanced lines so it takes less width */
+ const wrap=t=>{
+  const w=t.split(" ");
+  if(t.length<=13||w.length<2) return [t];
+  let best=null;
+  for(let i=1;i<w.length;i++){
+   const a=w.slice(0,i).join(" "), b=w.slice(i).join(" "), m=Math.max(a.length,b.length);
+   if(!best||m<best.m) best={m,lines:[a,b]};
+  }
+  return best.lines;
+ };
+
+ /* Spread one row of labels so none overlap, moving each as little as possible from its true position
+    (pool-adjacent-violators). Labels keep their left-to-right order, so leader lines never cross. */
+ const spread=row=>{
+  if(!row.length) return;
+  let o=0; row.forEach(it=>{it.o=o;o+=it.w+GAP;});
+  const total=o-GAP, blocks=[];
+  row.forEach((it,i)=>{
+   blocks.push({sum:it.px-it.w/2-it.o,n:1,start:i});
+   while(blocks.length>1){
+    const b=blocks[blocks.length-1], a=blocks[blocks.length-2];
+    if(a.sum/a.n<=b.sum/b.n) break;
+    a.sum+=b.sum; a.n+=b.n; blocks.pop();
+   }
+  });
+  const lo=4, hi=Math.max(lo,W-4-total);
+  blocks.forEach(b=>{
+   const v=Math.min(Math.max(b.sum/b.n,lo),hi);
+   for(let k=b.start;k<b.start+b.n;k++) row[k].c=v+row[k].o+row[k].w/2;
+  });
+ };
+
+ /* 1. Single-date events: alternate above/below the axis. Labels are spread out sideways, with a
+       leader line back to the exact point on the axis. If a side runs out of width it gets a second row. */
+ const sideItems={top:[],bottom:[]};
+ points.forEach((e,i)=>{
+  const lines=wrap(e.short);
+  const w=Math.max(Math.max(...lines.map(t=>t.length))*CH,44)+10;
+  sideItems[i%2===0?"top":"bottom"].push({e,px:x(e.year),lines,w});
+ });
+ const rowsFor=list=>{
+  const total=list.reduce((sum,it)=>sum+it.w+GAP,-GAP);
+  const rows=list.length?Math.max(1,Math.ceil(total/(W-8))):0;
+  const grouped=Array.from({length:rows},()=>[]);
+  list.forEach((it,i)=>{it.row=i%rows;grouped[it.row].push(it);});
+  grouped.forEach(spread);
+  return rows;
+ };
+ const topRows=rowsFor(sideItems.top), botRows=rowsFor(sideItems.bottom);
+ const A=topRows?104+(topRows-1)*RH:24;
+ const pointsBottom=A+(botRows?106+(botRows-1)*RH:14);
+
+ /* 2. Periods: overlapping periods go on separate rows; periods that don't overlap share a row.
+       Labels are placed inside the bar when they fit, otherwise beside it. */
+ const lanes=[], bars=[];
+ if(periods.length) lanes.push([[0,50]]);   /* reserve room for the "Periods" caption in the first row */
+ periods.slice().sort((a,b)=>a.year-b.year).forEach(e=>{
+  const x1=x(e.year), x2=Math.max(x(e.endYear),x1+6), bw=x2-x1;
+  const full=`${e.short} ${e.year}–${e.endYear}`;
+  let text=full, mode="in", lo=x1, hi=x2;
+  if(bw<full.length*CH+12){
+   text=e.short;
+   if(bw<text.length*CH+12){
+    const tw=text.length*CH;
+    if(e.labelSide==="left"&&x1-8-tw>=5||x2+8+tw>W-5){mode="left";lo=x1-8-tw;} else {mode="right";hi=x2+8+tw;}
+   }
+  }
+  let lane=lanes.findIndex(ext=>ext.every(q=>hi<q[0]-6||lo>q[1]+6));
+  if(lane<0){lane=lanes.length;lanes.push([]);}
+  lanes[lane].push([lo,hi]);
+  bars.push({e,x1,x2,text,mode,lane});
+ });
+ const LANE_H=26, periodsTop=pointsBottom+(periods.length?4:0);
+ const H=periods.length?periodsTop+10+lanes.length*LANE_H:pointsBottom;
+
+ let out=`<line x1="${X0-25}" y1="${A}" x2="${X1+25}" y2="${A}" stroke="#8993a4" stroke-width="3" stroke-linecap="round"/>`;
+ const drawItems=(list,d)=>list.forEach(({e,px,c,lines,row})=>{
+  const base=row*RH, stemY=A+d*(STEM+base);
+  const yearY=d<0 ? A-(STEM+base+8) : A+(STEM+base+21);
+  out+=`<line x1="${px}" y1="${A}" x2="${c}" y2="${stemY}" stroke="#8993a4" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+  out+=`<text x="${c}" y="${yearY}" text-anchor="middle" font-size="18" font-weight="650" fill="#20242c">${e.year}</text>`;
+  lines.forEach((t,k)=>{
+   const y=d<0 ? A-(STEM+base+26)-(lines.length-1-k)*14 : A+(STEM+base+39)+k*14;
+   out+=`<text x="${c}" y="${y}" text-anchor="middle" font-size="12" fill="#20242c">${t}</text>`;
+  });
+ });
+ drawItems(sideItems.top,-1); drawItems(sideItems.bottom,1);
+ points.forEach(e=>{
+  out+=`<circle cx="${x(e.year)}" cy="${A}" r="7" fill="${e.color}" stroke="white" stroke-width="1.5"><title>${e.date} — ${e.name}</title></circle>`;
+ });
+ if(periods.length){
+  out+=`<line x1="0" y1="${periodsTop}" x2="${W}" y2="${periodsTop}" stroke="#d8dde5" stroke-width="1"/>`;
+  out+=`<text x="2" y="${periodsTop+24}" font-size="12" fill="#687386">Periods</text>`;
+  bars.forEach(b=>{
+   const y=periodsTop+10+b.lane*LANE_H, w=b.x2-b.x1;
+   out+=`<rect x="${b.x1}" y="${y}" width="${w}" height="20" rx="5" fill="${b.e.color}"><title>${b.e.date} — ${b.e.name}</title></rect>`;
+   if(b.mode==="in") out+=`<text x="${b.x1+8}" y="${y+14.5}" font-size="12" font-weight="600" fill="#fff">${b.text}</text>`;
+   else if(b.mode==="right") out+=`<text x="${b.x2+8}" y="${y+14.5}" font-size="12" fill="#20242c">${b.text}</text>`;
+   else out+=`<text x="${b.x1-8}" y="${y+14.5}" font-size="12" text-anchor="end" fill="#20242c">${b.text}</text>`;
+  });
+ }
+ svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+ svg.innerHTML=out;
+}
+document.getElementById("clear").addEventListener("click",()=>{events.forEach(e=>e.selected=false);eventsEl.querySelectorAll("input").forEach(c=>c.checked=false);render();});
+document.getElementById("reset").addEventListener("click",()=>{events.forEach(e=>e.selected=true);eventsEl.querySelectorAll("input").forEach(c=>c.checked=true);render();});
+render();
+</script>
+</body>
+</html>
